@@ -3,8 +3,7 @@
  * Helper functions for enforcing tenant isolation
  */
 
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from './auth'
+import { auth } from './auth'
 import { prisma } from './prisma'
 import { headers } from 'next/headers'
 
@@ -13,7 +12,7 @@ import { headers } from 'next/headers'
  * Throws an error if no session or tenant ID is found
  */
 export async function requireTenantId(): Promise<string> {
-  const session = await getServerSession(authOptions)
+  const session = await auth()
 
   if (!session?.user?.tenantId) {
     throw new Error('Unauthorized: No tenant context')
@@ -26,7 +25,7 @@ export async function requireTenantId(): Promise<string> {
  * Get the current user ID from the session
  */
 export async function requireUserId(): Promise<string> {
-  const session = await getServerSession(authOptions)
+  const session = await auth()
 
   if (!session?.user?.id) {
     throw new Error('Unauthorized: No user context')
@@ -39,7 +38,7 @@ export async function requireUserId(): Promise<string> {
  * Get the current user role from the session
  */
 export async function requireUserRole(): Promise<string> {
-  const session = await getServerSession(authOptions)
+  const session = await auth()
 
   if (!session?.user?.role) {
     throw new Error('Unauthorized: No role context')
@@ -60,7 +59,7 @@ export function getTenantIdFromHeaders(): string | null {
  * Check if the current user has a specific role
  */
 export async function hasRole(requiredRole: 'OWNER' | 'ADMIN' | 'MEMBER'): Promise<boolean> {
-  const session = await getServerSession(authOptions)
+  const session = await auth()
 
   if (!session?.user?.role) {
     return false
