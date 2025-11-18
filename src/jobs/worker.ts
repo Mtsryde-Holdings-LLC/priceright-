@@ -164,7 +164,11 @@ export const priceUpdateWorker = new Worker(
       const product = await prisma.product.findUnique({
         where: { id: productId },
         include: {
-          marketplaceListings: true,
+          marketplaceListings: {
+            include: {
+              marketplaceConnection: true,
+            },
+          },
         },
       })
 
@@ -172,9 +176,9 @@ export const priceUpdateWorker = new Worker(
         throw new Error(`Product ${productId} not found`)
       }
 
-      // Find the marketplace listing
+      // Find the marketplace listing for the specified marketplace
       const listing = product.marketplaceListings.find(
-        l => l.marketplaceConnection
+        l => l.marketplaceConnection?.type === marketplace
       )
 
       if (!listing) {
