@@ -71,7 +71,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Welcome back!</h1>
           <p className="mt-1 text-sm text-gray-600">
-            Here's an overview of your repricing activity
+            Here&apos;s an overview of your repricing activity
           </p>
         </div>
 
