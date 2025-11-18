@@ -1,0 +1,508 @@
+// PriceRight - Multi-Tenant E-Commerce Repricer
+// Database Schema with strict tenant isolation
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// MULTI-TENANCY & AUTHENTICATION
+// ============================================================================
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique // URL-friendly identifier
+  plan      String   @default("free") // free, starter, professional, enterprise
+  status    String   @default("active") // active, suspended, cancelled
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  users                      User[]
+  marketplaceConnections     MarketplaceConnection[]
+  products                   Product[]
+  repricingRules             RepricingRule[]
+  repricingRecommendations   RepricingRecommendation[]
+  brandApprovalRequests      BrandApprovalRequest[]
+  inventorySnapshots         InventorySnapshot[]
+  priceSnapshots             PriceSnapshot[]
+  priceChangeLogs            PriceChangeLog[]
+  jobs                       Job[]
+
+  @@index([slug])
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model User {
+  id            String    @id @default(cuid())
+  tenantId      String
+  email         String    @unique
+  name          String?
+  passwordHash  String
+  role          UserRole  @default(MEMBER)
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  accounts              Account[]
+  sessions              Session[]
+  brandApprovalRequests BrandApprovalRequest[]
+
+  @@index([tenantId])
+  @@index([email])
+}
+
+// NextAuth models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================================================
+// MARKETPLACE INTEGRATIONS
+// ============================================================================
+
+enum MarketplaceType {
+  AMAZON
+  WALMART
+  FACEBOOK
+  TIKTOK
+  WHATSAPP
+  SHOPIFY
+  WOOCOMMERCE
+}
+
+model MarketplaceConnection {
+  id                String          @id @default(cuid())
+  tenantId          String
+  type              MarketplaceType
+  name              String // User-friendly name
+  isActive          Boolean         @default(true)
+
+  // Encrypted credentials (stored as JSON)
+  credentials       Json // { clientId, clientSecret, refreshToken, etc. }
+
+  // Connection status
+  status            String          @default("connected") // connected, error, disconnected
+  lastSyncAt        DateTime?
+  lastError         String?
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  // Relations
+  tenant            Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  productListings   ProductMarketplaceListing[]
+
+  @@index([tenantId])
+  @@index([type])
+}
+
+// ============================================================================
+// PRODUCT CATALOG
+// ============================================================================
+
+model Product {
+  id          String   @id @default(cuid())
+  tenantId    String
+
+  // Product identification
+  sku         String // Unique SKU per tenant
+  upc         String?
+  ean         String?
+  asin        String? // Amazon identifier
+
+  // Product details
+  title       String
+  description String?  @db.Text
+  brand       String?
+  category    String?
+  imageUrl    String?
+
+  // Pricing & cost
+  costPrice   Decimal  @db.Decimal(10, 2)
+
+  // Inventory
+  totalInventory Int   @default(0)
+
+  // Status
+  isActive    Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tenant                Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  marketplaceListings   ProductMarketplaceListing[]
+  repricingRules        RepricingRule[]
+  repricingRecommendations RepricingRecommendation[]
+  inventorySnapshots    InventorySnapshot[]
+  priceSnapshots        PriceSnapshot[]
+  priceChangeLogs       PriceChangeLog[]
+
+  @@unique([tenantId, sku])
+  @@index([tenantId])
+  @@index([brand])
+}
+
+// Product listing on specific marketplace
+model ProductMarketplaceListing {
+  id                      String   @id @default(cuid())
+  productId               String
+  marketplaceConnectionId String
+
+  // Marketplace-specific identifiers
+  marketplaceProductId    String? // ID on the marketplace
+  marketplaceUrl          String?
+
+  // Listing details
+  currentPrice            Decimal  @db.Decimal(10, 2)
+  marketplaceInventory    Int      @default(0)
+
+  // Status
+  status                  String   @default("active") // active, inactive, out_of_stock, error
+  isPublished             Boolean  @default(false)
+  lastSyncAt              DateTime?
+
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  // Relations
+  product               Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  marketplaceConnection MarketplaceConnection @relation(fields: [marketplaceConnectionId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, marketplaceConnectionId])
+  @@index([productId])
+  @@index([marketplaceConnectionId])
+}
+
+// ============================================================================
+// INVENTORY TRACKING
+// ============================================================================
+
+model InventorySnapshot {
+  id         String   @id @default(cuid())
+  tenantId   String
+  productId  String
+
+  quantity   Int
+  location   String?  // warehouse, marketplace name, etc.
+  timestamp  DateTime @default(now())
+
+  // Metadata
+  source     String?  // manual, sync, sale, restock
+  notes      String?
+
+  // Relations
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([productId])
+  @@index([timestamp])
+}
+
+// ============================================================================
+// PRICING & REPRICING
+// ============================================================================
+
+model PriceSnapshot {
+  id              String          @id @default(cuid())
+  tenantId        String
+  productId       String
+
+  marketplace     MarketplaceType
+
+  // Price data
+  ourPrice        Decimal?        @db.Decimal(10, 2)
+  lowestPrice     Decimal?        @db.Decimal(10, 2)
+  competitorPrices Json?          // Array of competitor prices
+
+  timestamp       DateTime        @default(now())
+
+  // Relations
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([productId])
+  @@index([marketplace])
+  @@index([timestamp])
+}
+
+enum RepricingStrategy {
+  MATCH_LOWEST
+  UNDERCUT_BY_PERCENT
+  UNDERCUT_BY_AMOUNT
+  TARGET_MARGIN
+  CUSTOM
+}
+
+model RepricingRule {
+  id          String             @id @default(cuid())
+  tenantId    String
+  productId   String?            // null = global rule for all products
+
+  name        String
+  description String?
+
+  // Strategy
+  strategy    RepricingStrategy  @default(MATCH_LOWEST)
+
+  // Constraints
+  minPrice    Decimal?           @db.Decimal(10, 2) // Price floor
+  maxPrice    Decimal?           @db.Decimal(10, 2) // Price ceiling
+  minMargin   Decimal?           @db.Decimal(5, 2)  // Minimum margin %
+  maxDiscount Decimal?           @db.Decimal(5, 2)  // Maximum discount %
+
+  // Strategy parameters (stored as JSON)
+  parameters  Json?              // { undercutPercent: 5, targetMargin: 20, etc. }
+
+  // Status
+  isActive    Boolean            @default(true)
+
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  // Relations
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([productId])
+}
+
+model RepricingRecommendation {
+  id                String          @id @default(cuid())
+  tenantId          String
+  productId         String
+
+  marketplace       MarketplaceType
+
+  // Current state
+  currentPrice      Decimal         @db.Decimal(10, 2)
+
+  // Recommendation
+  recommendedPrice  Decimal         @db.Decimal(10, 2)
+  confidence        Decimal         @db.Decimal(5, 2) // 0-100%
+
+  // Reasoning
+  reasoning         String          @db.Text // Human-readable explanation
+  analysisData      Json?           // Detailed analysis data
+
+  // Status
+  status            String          @default("pending") // pending, accepted, rejected, applied
+  appliedAt         DateTime?
+
+  createdAt         DateTime        @default(now())
+  expiresAt         DateTime?       // Recommendations expire after some time
+
+  // Relations
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([productId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model PriceChangeLog {
+  id              String          @id @default(cuid())
+  tenantId        String
+  productId       String
+
+  marketplace     MarketplaceType
+
+  oldPrice        Decimal         @db.Decimal(10, 2)
+  newPrice        Decimal         @db.Decimal(10, 2)
+
+  reason          String          // manual, repricing_accepted, auto_repricing
+  performedBy     String?         // userId if manual
+
+  timestamp       DateTime        @default(now())
+
+  // Relations
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([productId])
+  @@index([timestamp])
+}
+
+// ============================================================================
+// BRAND APPROVAL
+// ============================================================================
+
+enum BrandApprovalStatus {
+  DRAFT
+  PENDING
+  SUBMITTED
+  APPROVED
+  REJECTED
+  ADDITIONAL_INFO_REQUIRED
+}
+
+model BrandApprovalRequest {
+  id              String              @id @default(cuid())
+  tenantId        String
+  userId          String              // Who submitted
+
+  brandName       String
+
+  // Target marketplaces
+  targetMarketplaces MarketplaceType[]
+
+  // Product references
+  productIds      String[]            // Array of product IDs
+
+  // Status
+  status          BrandApprovalStatus @default(DRAFT)
+
+  // Notes
+  notes           String?             @db.Text
+
+  // Response from marketplaces
+  marketplaceResponses Json?          // Responses from each marketplace
+
+  submittedAt     DateTime?
+  reviewedAt      DateTime?
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  // Relations
+  tenant Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User                  @relation(fields: [userId], references: [id])
+  files  BrandApprovalFile[]
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([status])
+}
+
+enum FileType {
+  INVOICE
+  TRADEMARK
+  LICENSE
+  AUTHORIZATION_LETTER
+  OTHER
+}
+
+model BrandApprovalFile {
+  id         String   @id @default(cuid())
+  requestId  String
+
+  fileType   FileType
+  fileName   String
+  fileUrl    String   // S3 URL or storage path
+  fileSize   Int
+  mimeType   String
+
+  uploadedAt DateTime @default(now())
+
+  // Relations
+  request BrandApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+}
+
+// ============================================================================
+// BACKGROUND JOBS
+// ============================================================================
+
+enum JobType {
+  INVENTORY_SYNC
+  REPRICING_CALCULATION
+  MARKETPLACE_POLL
+  PRICE_UPDATE
+  PRODUCT_SYNC
+  BRAND_APPROVAL_SUBMIT
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  RETRYING
+}
+
+model Job {
+  id          String    @id @default(cuid())
+  tenantId    String
+
+  type        JobType
+  status      JobStatus @default(PENDING)
+
+  // Job data and results
+  payload     Json?     // Input data for the job
+  result      Json?     // Output/result of the job
+  error       String?   @db.Text
+
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+
+  scheduledFor DateTime @default(now())
+  startedAt    DateTime?
+  completedAt  DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([type])
+  @@index([status])
+  @@index([scheduledFor])
+}
