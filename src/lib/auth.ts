@@ -34,7 +34,7 @@ export const authConfig: NextAuthConfig = {
 
         const user = await prisma.user.findUnique({
           where: {
-            email: credentials.email,
+            email: credentials.email as string,
           },
           include: {
             tenant: true,
@@ -46,7 +46,7 @@ export const authConfig: NextAuthConfig = {
         }
 
         const isPasswordValid = await compare(
-          credentials.password,
+          credentials.password as string,
           user.passwordHash
         )
 
