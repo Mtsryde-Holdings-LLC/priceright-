@@ -1,0 +1,50 @@
+# PriceRight Terraform Configuration
+# Copy this file to terraform.tfvars and fill in your values
+
+#############################################################
+# General Configuration
+#############################################################
+environment = "production"
+aws_region  = "us-east-1"
+
+#############################################################
+# Vercel Configuration
+#############################################################
+vercel_api_token = "your-vercel-api-token"
+github_repo      = "your-username/priceright"
+nextauth_url     = "https://your-domain.com"
+nextauth_secret  = "generate-with-openssl-rand-base64-32"
+
+#############################################################
+# Database Configuration
+#############################################################
+# Option 1: Use external database (Supabase, Neon, etc.)
+use_aws_rds  = false
+database_url = "postgresql://user:pass@host:5432/priceright?sslmode=require"
+
+# Option 2: Create AWS RDS instance
+# use_aws_rds       = true
+# db_instance_class = "db.t3.micro"
+# db_password       = "strong-password-here"
+
+#############################################################
+# Redis Configuration
+#############################################################
+# Option 1: Use external Redis (Upstash, Redis Cloud, etc.)
+use_aws_elasticache = false
+redis_url           = "rediss://default:pass@host:6379"
+
+# Option 2: Create AWS ElastiCache instance
+# use_aws_elasticache = true
+# redis_node_type     = "cache.t3.micro"
+
+#############################################################
+# Optional: Marketplace API Keys
+#############################################################
+# amazon_client_id     = "your-amazon-client-id"
+# amazon_client_secret = "your-amazon-client-secret"
+
+#############################################################
+# Optional: Monitoring
+#############################################################
+# sentry_dsn = "your-sentry-dsn"

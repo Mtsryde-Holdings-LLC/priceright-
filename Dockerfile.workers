@@ -1,0 +1,51 @@
+# PriceRight Background Workers Dockerfile
+# This container runs the BullMQ workers for inventory sync and repricing
+
+FROM node:18-alpine AS base
+
+# Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat openssl
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+COPY prisma ./prisma/
+
+RUN npm ci --only=production && npm cache clean --force
+RUN npm install tsx --save-dev
+
+# Generate Prisma Client
+RUN npx prisma generate
+
+# Production image
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV production
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 worker
+
+# Copy dependencies
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/package*.json ./
+
+# Copy source code
+COPY --chown=worker:nodejs . .
+
+# Generate Prisma Client
+COPY prisma ./prisma
+RUN npx prisma generate
+
+USER worker
+
+EXPOSE 3001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || exit 1
+
+# Run workers
+CMD ["npm", "run", "jobs:dev"]

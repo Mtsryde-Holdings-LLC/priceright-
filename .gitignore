@@ -49,3 +49,17 @@ Thumbs.db
 
 # uploads (local storage)
 /uploads
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/terraform.tfvars
+terraform/.terraform.lock.hcl
+terraform/terraform-outputs.txt
+
+# Deployment
+.env.production
+.env.staging
+.env.development
+*.log

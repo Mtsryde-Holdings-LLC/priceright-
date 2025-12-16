@@ -131,10 +131,70 @@ The application will be available at http://localhost:3000
 npm run jobs:dev
 ```
 
+## 🚀 Production Deployment
+
+PriceRight includes **complete deployment automation**:
+
+### Quick Deploy (30 minutes)
+```bash
+# 1. Setup external services (Supabase + Upstash)
+# 2. Configure environment
+cp .env.example .env.production
+nano .env.production
+
+# 3. One-command deployment
+chmod +x deploy.sh
+./deploy.sh
+```
+
+### Deployment Options
+
+| Method | Time | Best For | Documentation |
+|--------|------|----------|---------------|
+| **Automated Script** | 30 min | Quick production | [AUTOMATED_DEPLOYMENT.md](./AUTOMATED_DEPLOYMENT.md) |
+| **Terraform + CI/CD** | 60 min | Enterprise teams | [terraform/README.md](./terraform/README.md) |
+| **Docker Compose** | 20 min | Self-hosted | See below |
+| **Manual** | 2-4 hrs | Learning | [DEPLOYMENT.md](./DEPLOYMENT.md) |
+
+### Docker Compose (Self-Hosted)
+```bash
+# Start all services (PostgreSQL, Redis, App, Workers)
+docker-compose up -d
+
+# Run migrations
+docker-compose exec app npx prisma migrate deploy
+
+# Access at http://localhost:3000
+```
+
+**📚 Complete Deployment Documentation:**
+- **[DEPLOYMENT_SUMMARY.md](./DEPLOYMENT_SUMMARY.md)** - One-page overview
+- **[AUTOMATED_DEPLOYMENT.md](./AUTOMATED_DEPLOYMENT.md)** - Full automation guide
+- **[QUICK_DEPLOY.md](./QUICK_DEPLOY.md)** - 2-hour quick start
+- **[PRODUCTION_CHECKLIST.md](./PRODUCTION_CHECKLIST.md)** - Launch checklist
+
 ## Project Structure
 
 ```
 priceright/
+├── deploy.sh                      # 🚀 One-command deployment
+├── docker-compose.yml             # 🐳 Docker orchestration
+├── Dockerfile                     # Next.js container
+├── Dockerfile.workers             # Worker container
+│
+├── .github/workflows/
+│   └── deploy.yml                 # CI/CD pipeline
+│
+├── scripts/
+│   ├── validate-env.sh            # Environment validation
+│   ├── deploy-workers.sh          # Worker deployment
+│   └── health-check.sh            # Health checks
+│
+├── terraform/                     # Infrastructure as Code
+│   ├── main.tf
+│   ├── variables.tf
+│   └── outputs.tf
+│
 ├── prisma/
 │   └── schema.prisma              # Database schema with multi-tenancy
 ├── src/
